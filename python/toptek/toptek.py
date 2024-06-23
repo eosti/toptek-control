@@ -1,3 +1,4 @@
+"""Datastructures and control code for the Toptek controller"""
 import logging
 import os
 import sys
@@ -10,6 +11,8 @@ import serial
 
 
 class ToptekSwitches(IntEnum):
+    """Enum for the Toptek button indices"""
+
     SSB_ON = 1
     TX_PA = 2
     SET_PWR = 3
@@ -20,6 +23,9 @@ class ToptekSwitches(IntEnum):
 
 @dataclass
 class ToptekState:
+    """Class to store and translate the state of the LEDs"""
+
+    # pylint: disable=too-many-instance-attributes
     led_10: bool
     led_20: bool
     led_30: bool
@@ -36,6 +42,8 @@ class ToptekState:
 
     def get_power(self) -> int:
         """Parses LED state and returns the power level"""
+        # pylint: disable=too-many-return-statements
+
         if self.red_en:
             raise ValueError("Red LEDs are on, unable to get power")
 
@@ -59,6 +67,8 @@ class ToptekState:
 
     def get_swr(self) -> float:
         """Parses LED state and returns the SWR level"""
+        # pylint: disable=too-many-return-statements
+
         if self.led_80:
             return 1.9
         if self.led_70:
@@ -99,14 +109,23 @@ class ToptekState:
         return errors
 
     def any_on(self) -> bool:
-        if self.led_80 or self.led_70 or self.led_60 or self.led_50 or self.led_40 or self.led_30 or self.led_20 or self.led_10:
-            return True
-        else:
-            return False
+        """Helper to check if any of the LEDs are on"""
+        return (
+            self.led_80
+            or self.led_70
+            or self.led_60
+            or self.led_50
+            or self.led_40
+            or self.led_30
+            or self.led_20
+            or self.led_10
+        )
 
 
 @dataclass
 class ToptekSwitchState:
+    """Class to store the state of the switches"""
+
     sw_ssb_on: bool
     sw_tx_pa: bool
     sw_set_pwr: bool
@@ -116,6 +135,13 @@ class ToptekSwitchState:
 
 
 class Toptek:
+    """Main class for controlling the Toptek controller"""
+
+    # pylint: disable=too-many-public-methods
+
+    FLASHY_POLL_DELAY = 0.05  # Time between checking state
+    FLASHY_TOTAL_DELAY = 2  # Time until PA's bargraph mode turns off
+
     def __init__(self, port: str) -> None:
         # Ensure we have r/w
         self.port = Path(port)
@@ -124,8 +150,9 @@ class Toptek:
 
         if not os.access(self.port, os.R_OK | os.W_OK):
             logging.critical(
-                f"Unable to acquire read/write permissions on {self.port}.\n"
-                + "Please change permissions, or run this script as superuser."
+                "Unable to acquire read/write permissions on %s.\n"
+                + "Please change permissions, or run this script as superuser.",
+                self.port,
             )
             sys.exit(1)
 
@@ -136,7 +163,7 @@ class Toptek:
 
     def write(self, cmd: str) -> None:
         """Write a command over Serial"""
-        logging.debug(f"TX: {cmd}")
+        logging.debug("TX: %s", cmd)
         self.ser.write(cmd.encode("ascii"))
         time.sleep(0.05)
         ret = self.readline()
@@ -147,7 +174,7 @@ class Toptek:
         """Read one line from Serial"""
         line = self.ser.readline()
         line_decoded = line.decode("utf-8").strip()
-        logging.debug(f"RX: {line_decoded}")
+        logging.debug("RX: %s", line_decoded)
         return line_decoded
 
     def query(self, cmd: str) -> str:
@@ -271,10 +298,10 @@ class Toptek:
         if state.red_en:
             outstr += f", ERRORS: {self.get_errors()}"
             return outstr
-        else:
-            outstr += f", output power set at {self.get_tx_power()}W"
 
-            outstr += f", current power: {state.get_power()}"
+        outstr += f", output power set at {self.get_tx_power()}W"
+
+        outstr += f", current power: {state.get_power()}"
 
         return outstr
 
@@ -284,13 +311,11 @@ class Toptek:
             LEDs (should) stop blinking
         """
         state: ToptekState
-        POLL_DELAY = 0.05  # Time between checking state
-        TOTAL_DELAY = 2  # Time until PA's bargraph mode turns off
-        for i in range(int(TOTAL_DELAY / POLL_DELAY)):
-            time.sleep(POLL_DELAY)
+        for i in range(int(self.FLASHY_TOTAL_DELAY / self.FLASHY_POLL_DELAY)):
+            time.sleep(self.FLASHY_POLL_DELAY)
             state = self.get_state()
             if state.any_on() != 0:
-                time.sleep(TOTAL_DELAY - i * POLL_DELAY)
+                time.sleep(self.FLASHY_TOTAL_DELAY - i * self.FLASHY_POLL_DELAY)
                 break
 
         return state
@@ -300,6 +325,7 @@ class Toptek:
     #  ╰──────────────────────────────────────────────────────────╯
 
     def get_errors(self) -> list[str]:
+        """Get all errors"""
         state = self.get_state()
         if state.red_en is False:
             return [""]
@@ -326,7 +352,6 @@ class Toptek:
         state = self.get_state()
         if not state.tx_pa:
             raise RuntimeError("Cannot set power when PA off!")
-            return
 
         set_power = self.get_tx_power()
         if set_power < power:
@@ -340,7 +365,7 @@ class Toptek:
         self.press(ToptekSwitches.SET_PWR)
         time.sleep(0.1)
 
-        for i in range(num_presses):
+        for _ in range(num_presses):
             time.sleep(0.2)
             self.press(ToptekSwitches.SET_PWR)
 
@@ -359,7 +384,7 @@ class Toptek:
             raise RuntimeError("Amplifier is not on!")
         if state.red_en:
             raise RuntimeError("Amplifier in error or in check SWR mode")
-        logging.info(f"Current power is {state.get_power()}W")
+        logging.info("Current power is %sW", state.get_power())
         return state.get_power()
 
     #  ╭──────────────────────────────────────────────────────────╮
@@ -472,12 +497,6 @@ class Toptek:
         else:
             logging.info("DA already on")
 
-    def da_on_fast(self) -> None:
-        self.switch_on(ToptekSwitches.DA_EN)
-
-    def da_off_fast(self) -> None:
-        self.switch_off(ToptekSwitches.DA_EN)
-
     def da_off(self) -> None:
         """Turns the DA off"""
         state = self.get_switch_state()
@@ -490,3 +509,11 @@ class Toptek:
                 raise RuntimeError("DA not turned off")
         else:
             logging.info("DA already off")
+
+    def da_on_fast(self) -> None:
+        """Turns the DA on quickly, without state checks"""
+        self.switch_on(ToptekSwitches.DA_EN)
+
+    def da_off_fast(self) -> None:
+        """Turns the DA off quickly, without state checks"""
+        self.switch_off(ToptekSwitches.DA_EN)
