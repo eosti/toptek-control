@@ -1,7 +1,7 @@
 import logging
 from argparse import ArgumentParser
 
-from IPython import get_ipython
+from IPython import get_ipython  # type: ignore
 
 from toptek import Toptek
 
