@@ -13,6 +13,14 @@ import serial
 logger = logging.getLogger(__name__)
 
 
+class ToptekException(Exception):
+    """General K3NG exception class"""
+
+
+class ToptekValueException(Exception):
+    """Exception to catch value validation exceptions"""
+
+
 class ToptekSwitches(IntEnum):
     """Enum for the Toptek button indices"""
 
@@ -48,7 +56,7 @@ class ToptekState:
         # pylint: disable=too-many-return-statements
 
         if self.red_en:
-            raise ValueError("Red LEDs are on, unable to get power")
+            raise ToptekException("Red LEDs are on, unable to get power")
 
         if self.led_80:
             return 80
@@ -93,7 +101,7 @@ class ToptekState:
     def get_errors(self) -> list[str]:
         """Parses LED state and returns any errors"""
         if not self.red_en:
-            raise ValueError("No error apparent!")
+            raise ToptekException("No error apparent!")
 
         errors = []
 
@@ -162,7 +170,7 @@ class Toptek:
         self.ser = serial.Serial(port, 115200, timeout=1)
         time.sleep(1)
         if self.readline() != "Toptek Switch Interface":
-            raise RuntimeError("Invalid welcome message")
+            raise ToptekException("Invalid welcome message")
 
     def write(self, cmd: str) -> None:
         """Write a command over Serial"""
@@ -171,7 +179,7 @@ class Toptek:
         time.sleep(0.05)
         ret = self.readline()
         if ret != f"{cmd}":
-            raise RuntimeError(f"Invalid response from Toptek: {ret}")
+            raise ToptekException(f"Invalid response from Toptek: {ret}")
 
     def readline(self) -> str:
         """Read one line from Serial"""
@@ -221,14 +229,14 @@ class Toptek:
         """
         ret = self.query("EN")
         if ret != "Remote keys enabled":
-            raise RuntimeError("Failed to enable remote keys")
+            raise ToptekException("Failed to enable remote keys")
         logger.info("Enabled remote control of PA")
 
     def disable(self) -> None:
         """Disable remote key presses, allowing the facepanel buttons to be used manually"""
         ret = self.query("DS")
         if ret != "Remote keys disabled":
-            raise RuntimeError("Failed to disable remote keys")
+            raise ToptekException("Failed to disable remote keys")
         logger.info("Disabled remote control of PA")
 
     def get_state(self) -> ToptekState:
@@ -348,13 +356,13 @@ class Toptek:
     def set_tx_power(self, power: int) -> None:
         """Set the PA's power setting"""
         if power not in [20, 40, 60, 80]:
-            raise ValueError(
+            raise ToptekValueException(
                 f"Invalid set power (got {power}, needs to be 20, 40, 60, or 80)"
             )
 
         state = self.get_state()
         if not state.tx_pa:
-            raise RuntimeError("Cannot set power when PA off!")
+            raise ToptekException("Cannot set power when PA off!")
 
         set_power = self.get_tx_power()
         if set_power < power:
@@ -376,7 +384,7 @@ class Toptek:
         time.sleep(2)
         actual_set = self.get_tx_power()
         if actual_set != power:
-            raise RuntimeError(
+            raise ToptekException(
                 f"Power not set correctly (got {actual_set}, wanted {power})"
             )
 
@@ -384,9 +392,9 @@ class Toptek:
         """Get the power that the PA is currently outputting"""
         state = self.get_state()
         if not state.tx_pa:
-            raise RuntimeError("Amplifier is not on!")
+            raise ToptekException("Amplifier is not on!")
         if state.red_en:
-            raise RuntimeError("Amplifier in error or in check SWR mode")
+            raise ToptekException("Amplifier in error or in check SWR mode")
         logger.info("Current power is %sW", state.get_power())
         return state.get_power()
 
@@ -405,7 +413,7 @@ class Toptek:
 
             state = self.get_state()
             if not state.tx_pa:
-                raise RuntimeError("PA not turned on")
+                raise ToptekException("PA not turned on")
         else:
             logger.info("PA already on")
 
@@ -418,7 +426,7 @@ class Toptek:
 
             state = self.get_state()
             if state.tx_pa:
-                raise RuntimeError("PA not turned off")
+                raise ToptekException("PA not turned off")
         else:
             logger.info("PA already off")
 
@@ -433,7 +441,7 @@ class Toptek:
 
             state = self.get_state()
             if not state.lna_on:
-                raise RuntimeError("LNA not turned on")
+                raise ToptekException("LNA not turned on")
         else:
             logger.info("LNA already on")
 
@@ -446,7 +454,7 @@ class Toptek:
 
             state = self.get_state()
             if state.lna_on:
-                raise RuntimeError("LNA not turned off")
+                raise ToptekException("LNA not turned off")
         else:
             logger.info("LNA already off")
 
@@ -465,7 +473,7 @@ class Toptek:
 
             state = self.get_state()
             if not state.ssb_on:
-                raise RuntimeError("SSB not turned on")
+                raise ToptekException("SSB not turned on")
 
         else:
             logger.info("SSB already on")
@@ -483,7 +491,7 @@ class Toptek:
 
             state = self.get_state()
             if state.ssb_on:
-                raise RuntimeError("SSB not turned off")
+                raise ToptekException("SSB not turned off")
         else:
             logger.info("SSB already off")
 
@@ -496,7 +504,7 @@ class Toptek:
 
             state = self.get_switch_state()
             if not state.sw_da_on:
-                raise RuntimeError("DA not turned on")
+                raise ToptekException("DA not turned on")
         else:
             logger.info("DA already on")
 
@@ -509,7 +517,7 @@ class Toptek:
 
             state = self.get_switch_state()
             if state.sw_da_on:
-                raise RuntimeError("DA not turned off")
+                raise ToptekException("DA not turned off")
         else:
             logger.info("DA already off")
 
